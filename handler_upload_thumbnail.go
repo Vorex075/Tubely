@@ -4,9 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"os"
 	"path"
+	"slices"
 	"strings"
 	"time"
 
@@ -15,7 +17,10 @@ import (
 	"github.com/google/uuid"
 )
 
+var allowedThumbnailMediaType = []string{"image/jpeg", "image/png"}
+
 func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Request) {
+
 	videoIDString := r.PathValue("videoID")
 	videoID, err := uuid.Parse(videoIDString)
 	if err != nil {
@@ -53,6 +58,17 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 	defer file.Close()
 	mediaType := header.Header.Get("Content-Type")
+	mediaType, _, err = mime.ParseMediaType(mediaType)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Unrecognized mediaType", err)
+		return
+	}
+
+	if slices.Index(allowedThumbnailMediaType, mediaType) == -1 {
+		respondWithError(w, http.StatusBadRequest, "Invalid media type", err)
+		return
+	}
+
 	videoInfo, err := cfg.db.GetVideo(videoID)
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "Video not found", err)

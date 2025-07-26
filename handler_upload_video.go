@@ -1,13 +1,17 @@
 package main
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"mime"
 	"net/http"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -92,13 +96,34 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	filepath, err := filepath.Abs(tempFile.Name())
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Server file error", err)
+		return
+	}
+
+	aspectRatio, err := getVideoAspectRatio(filepath)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Server file error", err)
+		return
+	}
+	var videoPrefix string
+	switch aspectRatio {
+	case "16:9":
+		videoPrefix = "landscape/"
+	case "9:16":
+		videoPrefix = "portrait/"
+	default:
+		videoPrefix = "other/"
+	}
+
 	randomData := make([]byte, 32)
 	_, err = rand.Read(randomData)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Server file error", err)
 		return
 	}
-	objectKey := hex.EncodeToString(randomData) + ".mp4"
+	objectKey := videoPrefix + hex.EncodeToString(randomData) + ".mp4"
 
 	objectParam := s3.PutObjectInput{
 		Bucket:      &cfg.s3Bucket,
@@ -124,6 +149,35 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		respondWithError(w, http.StatusInternalServerError, "Unexpected db error", err)
 		return
 	}
+	fmt.Println("exiting video upload function")
 	respondWithJSON(w, http.StatusOK, struct{}{})
 
+}
+
+type videoMetadata struct {
+	Streams []struct {
+		Width       int    `json:"width"`
+		Height      int    `json:"height"`
+		AspectRatio string `json:"display_aspect_ratio"`
+	} `json:"streams"`
+}
+
+func getVideoAspectRatio(filepath string) (string, error) {
+	fmt.Printf("filepath: %s\n", filepath)
+	ffmpegCommand := exec.Command(
+		"ffprobe", "-v", "error", "-print_format", "json", "-show_streams", filepath)
+	outBuff := bytes.NewBuffer([]byte{})
+	ffmpegCommand.Stdout = outBuff
+
+	err := ffmpegCommand.Run()
+	if err != nil {
+		return "", err
+	}
+	var metadata videoMetadata
+	err = json.Unmarshal(outBuff.Bytes(), &metadata)
+	if err != nil {
+		return "", err
+	}
+
+	return metadata.Streams[0].AspectRatio, nil
 }

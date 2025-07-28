@@ -151,20 +151,25 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	videoUrl := fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s",
-		cfg.s3Bucket, cfg.s3Region, objectKey)
+	videoUrl := fmt.Sprintf("%s,%s", cfg.s3Bucket, objectKey)
 
 	newVideoInfo := videoInfo
 
-	newVideoInfo.UpdatedAt = time.Now()
 	newVideoInfo.VideoURL = &videoUrl
+
+	newVideoInfo.UpdatedAt = time.Now()
+
 	err = cfg.db.UpdateVideo(newVideoInfo)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Unexpected db error", err)
 		return
 	}
-	fmt.Println("exiting video upload function")
-	respondWithJSON(w, http.StatusOK, struct{}{})
+	newVideoInfo, err = cfg.dbVideoToSignedVideo(newVideoInfo)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError,
+			"Couldn't generate presigned url", err)
+	}
+	respondWithJSON(w, http.StatusOK, newVideoInfo)
 
 }
 

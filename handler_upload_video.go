@@ -116,6 +116,20 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 	default:
 		videoPrefix = "other/"
 	}
+	filepath, err = processVideoForFastStart(filepath)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Server file error", err)
+		return
+	}
+	tempFile.Close()
+	os.Remove(tempFile.Name())
+	tempFile, err = os.Open(filepath)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Server file error", err)
+		return
+	}
+	defer os.Remove(tempFile.Name())
+	defer tempFile.Close()
 
 	randomData := make([]byte, 32)
 	_, err = rand.Read(randomData)
@@ -164,12 +178,12 @@ type videoMetadata struct {
 
 func getVideoAspectRatio(filepath string) (string, error) {
 	fmt.Printf("filepath: %s\n", filepath)
-	ffmpegCommand := exec.Command(
+	ffprobeCommand := exec.Command(
 		"ffprobe", "-v", "error", "-print_format", "json", "-show_streams", filepath)
 	outBuff := bytes.NewBuffer([]byte{})
-	ffmpegCommand.Stdout = outBuff
+	ffprobeCommand.Stdout = outBuff
 
-	err := ffmpegCommand.Run()
+	err := ffprobeCommand.Run()
 	if err != nil {
 		return "", err
 	}
@@ -180,4 +194,29 @@ func getVideoAspectRatio(filepath string) (string, error) {
 	}
 
 	return metadata.Streams[0].AspectRatio, nil
+}
+
+func processVideoForFastStart(filePath string) (string, error) {
+	randomBytes := make([]byte, 16)
+	_, err := rand.Read(randomBytes)
+	if err != nil {
+		return "", err
+	}
+
+	tempFilePath, err := filepath.Abs(hex.EncodeToString(randomBytes) + ".mp4")
+	if err != nil {
+		return "", nil
+	}
+	videoFastStartCommand := exec.Command(
+		"ffmpeg", "-i", filePath, "-c", "copy",
+		"-movflags", "faststart", "-f", "mp4", tempFilePath)
+
+	errBuff := bytes.NewBuffer([]byte{})
+	videoFastStartCommand.Stderr = errBuff
+	err = videoFastStartCommand.Run()
+	if err != nil {
+		fmt.Println(string(errBuff.Bytes()))
+		return "", err
+	}
+	return tempFilePath, nil
 }

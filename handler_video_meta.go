@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"net/http"
-	"sync"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/database"
@@ -95,11 +94,11 @@ func (cfg *apiConfig) handlerVideoGet(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, http.StatusNotFound, "Couldn't get video", err)
 		return
 	}
-	video, err = cfg.dbVideoToSignedVideo(video)
+	/*video, err = cfg.dbVideoToSignedVideo(video)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Unexpected error", err)
 		return
-	}
+	}*/
 
 	respondWithJSON(w, http.StatusOK, video)
 }
@@ -122,17 +121,17 @@ func (cfg *apiConfig) handlerVideosRetrieve(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	var wg sync.WaitGroup
+	/*var wg sync.WaitGroup
 
 	for i := range videos {
-		//wg.Add(1)
-		//go func(i int) {
-		videos[i], _ = cfg.dbVideoToSignedVideo(videos[i])
-		//wg.Done()
-		//}(i)
+		wg.Add(1)
+		go func(i int) {
+			videos[i], _ = cfg.dbVideoToSignedVideo(videos[i])
+			wg.Done()
+		}(i)
 	}
 
-	wg.Wait()
+	wg.Wait()*/
 
 	respondWithJSON(w, http.StatusOK, videos)
 }
